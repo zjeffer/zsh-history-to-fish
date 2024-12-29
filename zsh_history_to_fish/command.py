@@ -19,7 +19,12 @@ ZSH_HISTORY_READER = "zsh -i -c 'fc -R {}; fc -l -t \"%s\" 0'"
 
 def read_history(input_file):
     command = ZSH_HISTORY_READER.format(input_file)
-    p = subprocess.run(command, capture_output=True, shell=True, encoding='utf8')
+    lines: list[str] = []
+    try:
+        p = subprocess.run(command, capture_output=True, shell=True, encoding='utf8', check=True)
+    except Exception as e:
+        print(f'An exception occurred while reading history: {e}')
+        sys.exit(1)
     lines = p.stdout.splitlines()
     yield from map(lambda x: x.replace('\\n', '\n'), lines)
 
@@ -48,11 +53,11 @@ def display_changed(zsh, fish):
 def writer_factory(output_file, dry_run):
     if dry_run:
         yield lambda x: None
-        print(f'No file has been written.')
+        print('No file has been written.')
         return
 
-    with open(output_file, 'a') as out:
-        yield lambda x: out.write(x)
+    with open(output_file, 'a', encoding='utf8') as out:
+        yield out.write
     print(f'\nFile "{output_file}" has been written successfully.')
 
 
@@ -74,6 +79,7 @@ def exporter(input_file, output_file, dry_run, no_convert):
     converter = (lambda x: x) if no_convert else naive_zsh_to_fish
     changed = []
     with writer_factory(output_file, dry_run) as writer:
+        i = 0
         for i, (timestamp, command_zsh) in enumerate(parse_history(input_file)):
             command_fish = converter(command_zsh)
             fish_history = f'- cmd: {command_fish}\n  when: {timestamp}\n'
